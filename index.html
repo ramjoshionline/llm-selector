@@ -207,28 +207,6 @@ header{background:var(--navy);display:flex;align-items:center;padding:0 20px;gap
 /* Animate in */
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .animate-in{animation:fadeUp .35s ease forwards;}
-
-  /* ── Live data badge ── */
-  .live-badge {
-    display:inline-flex; align-items:center; gap:5px;
-    font-family:var(--mono); font-size:9.5px; font-weight:500;
-    padding:3px 8px; border-radius:2px; text-transform:uppercase; letter-spacing:.06em;
-  }
-  .live-badge.fresh { background:var(--green-bg); color:var(--green); border:1px solid var(--green-b); }
-  .live-badge.stale { background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-b); }
-  .live-badge.fetching { background:var(--blue-light); color:var(--blue); border:1px solid var(--blue-mid); }
-  .live-dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
-  .live-dot.pulse { animation:livePulse 1.4s ease-in-out infinite; }
-  @keyframes livePulse { 0%,100%{opacity:.4;transform:scale(.8);} 50%{opacity:1;transform:scale(1);} }
-
-  .fetch-status {
-    background:var(--surface); border:1px solid var(--border);
-    padding:10px 14px; display:flex; align-items:center; gap:10px;
-    font-size:11.5px; color:var(--text-m); margin-bottom:12px;
-    border-radius:var(--r); border-left:3px solid var(--blue);
-  }
-  .fetch-status.error { border-left-color:var(--amber); }
-
 </style>
 </head>
 <body>
@@ -598,153 +576,6 @@ function setExample(el){
   document.getElementById('reqInput').focus();
 }
 
-// ── Live leaderboard data ─────────────────────────────────────────────────
-let liveDataCache = null;   // { snapshot: string, fetchedAt: Date, source: string }
-let liveDataStatus = 'none'; // 'none'|'fetching'|'ready'|'failed'
-
-async function fetchLiveLeaderboardData() {
-  if (liveDataCache && (Date.now() - liveDataCache.fetchedAt) < 30 * 60 * 1000) {
-    return liveDataCache; // cache for 30 minutes
-  }
-
-  liveDataStatus = 'fetching';
-  updateLiveBadge();
-
-  const key = getKey();
-  if (!key) return null;
-
-  const FETCH_SYSTEM = `You are a data extraction assistant. Your job is to search for current LLM benchmark data and return a structured JSON snapshot.
-
-Use web_search to find the latest model rankings and scores from artificialanalysis.ai. Search for:
-1. "site:artificialanalysis.ai LLM intelligence index rankings 2025" or similar
-2. Current top models by: intelligence score, coding score, price per 1M tokens
-
-Return ONLY this JSON structure, no other text:
-{
-  "fetched_at": "ISO date string",
-  "source": "artificialanalysis.ai",
-  "top_models": [
-    {
-      "name": "Model Name",
-      "provider": "Provider",
-      "intelligence_index": 85.2,
-      "coding_index": 78.1,
-      "math_index": 90.0,
-      "price_per_1m_blended": 3.50,
-      "price_per_1m_input": 3.00,
-      "price_per_1m_output": 15.00,
-      "context_window_k": 200,
-      "tokens_per_second": 85.0,
-      "strengths": ["reasoning", "code"],
-      "open_weights": false
-    }
-  ],
-  "leaderboard_url": "https://artificialanalysis.ai/leaderboards/models",
-  "data_note": "brief note about data freshness or caveats"
-}
-
-Include at least 10-15 top models covering: GPT-4o, Claude 3.5/3.7 Sonnet, Gemini 1.5/2.0 Pro/Flash, Llama 3.x 70B/405B, Mistral Large, DeepSeek V3/R1, Grok, Command R+. 
-If you cannot find exact current scores, use your best knowledge of approximate current rankings and note this in data_note.`;
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 3000,
-        system: FETCH_SYSTEM,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: 'Fetch current LLM benchmark data from artificialanalysis.ai and return the structured JSON.' }]
-      })
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    // Handle tool_use loop — keep going until stop_reason is end_turn
-    let allMessages = [{ role: 'user', content: 'Fetch current LLM benchmark data from artificialanalysis.ai and return the structured JSON.' }];
-    let finalText = '';
-    let currentData = data;
-
-    while (currentData.stop_reason === 'tool_use') {
-      const assistantContent = currentData.content;
-      allMessages.push({ role: 'assistant', content: assistantContent });
-
-      // Build tool results
-      const toolResults = assistantContent
-        .filter(b => b.type === 'tool_use')
-        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: JSON.stringify(b.input || {}) }));
-
-      allMessages.push({ role: 'user', content: toolResults });
-
-      // Continue the conversation
-      const cont = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 3000,
-          system: FETCH_SYSTEM,
-          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-          messages: allMessages
-        })
-      });
-      currentData = await cont.json();
-    }
-
-    finalText = currentData.content.filter(b => b.type === 'text').map(b => b.text).join('');
-
-    const parsed = JSON.parse(stripFences(finalText));
-
-    liveDataCache = {
-      snapshot: JSON.stringify(parsed, null, 2),
-      fetchedAt: Date.now(),
-      source: parsed.source || 'artificialanalysis.ai',
-      modelCount: parsed.top_models?.length || 0,
-      note: parsed.data_note || ''
-    };
-    liveDataStatus = 'ready';
-    updateLiveBadge();
-    return liveDataCache;
-
-  } catch (e) {
-    console.warn('Live data fetch failed:', e.message);
-    liveDataStatus = 'failed';
-    updateLiveBadge();
-    return null;
-  }
-}
-
-function updateLiveBadge() {
-  const badge = document.getElementById('liveBadge');
-  if (!badge) return;
-  if (liveDataStatus === 'fetching') {
-    badge.className = 'live-badge fetching';
-    badge.innerHTML = '<span class="live-dot pulse"></span>Fetching live data…';
-  } else if (liveDataStatus === 'ready' && liveDataCache) {
-    const age = Math.round((Date.now() - liveDataCache.fetchedAt) / 60000);
-    badge.className = 'live-badge fresh';
-    badge.innerHTML = `<span class="live-dot"></span>Live data · ${liveDataCache.modelCount} models · ${age < 1 ? 'just now' : age + 'm ago'}`;
-  } else if (liveDataStatus === 'failed') {
-    badge.className = 'live-badge stale';
-    badge.innerHTML = '<span class="live-dot"></span>Training data (live fetch failed)';
-  } else {
-    badge.className = 'live-badge stale';
-    badge.innerHTML = '<span class="live-dot"></span>Training data only';
-  }
-}
-
 // ── Claude API ────────────────────────────────────────────────────────────
 async function callClaude(messages, systemPrompt){
   const key=getKey();
@@ -760,19 +591,8 @@ async function callClaude(messages, systemPrompt){
 }
 
 // ── System prompts ────────────────────────────────────────────────────────
-function buildInitSystem(liveData) {
-  const liveContext = liveData ? `
+const INIT_SYSTEM=`You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
 
-## LIVE LEADERBOARD DATA (from ${liveData.source}, fetched just now)
-Use this real data to populate your shortlist and benchmark_note. Prioritise these actual current scores over your training knowledge.
-${liveData.snapshot}
-` : `
-
-## DATA SOURCE
-No live data available — use your training knowledge for model rankings and scores. Note this in benchmark_note.
-`;
-  return `You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
-${liveContext}
 TASK: Given a user's requirement description, do two things:
 1. Infer the 9 parameters below from the description (use sensible defaults if not mentioned)
 2. Generate a full recommendation report
@@ -826,14 +646,8 @@ OUTPUT FORMAT: Return ONLY valid JSON in this exact structure, no other text:
   }
 }`;
 
-function buildUpdateSystem(liveData) {
-  const liveContext = liveData ? `
+const UPDATE_SYSTEM=`You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
 
-## LIVE LEADERBOARD DATA (from ${liveData.source})
-${liveData.snapshot}
-` : '';
-  return `You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
-${liveContext}
 TASK: Given a user's requirement description AND their current parameter settings, generate an updated recommendation report.
 
 OUTPUT FORMAT: Return ONLY valid JSON with a "report" key containing the report object. No other text.
@@ -894,18 +708,15 @@ async function runAnalysis(){
   btn.disabled=true;
   btn.innerHTML='<span class="mini-spinner" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;"></span> Analysing…';
 
-  showLoadingState('Fetching live leaderboard data…', 'Querying artificialanalysis.ai');
+  showLoadingState();
 
   try {
-    const liveData = await fetchLiveLeaderboardData();
-    updateLoadingState('Analysing requirements…', 'Applying Three-Gate Framework');
-    const raw=await callClaude([{role:'user',content:`Requirement: ${req}`}], buildInitSystem(liveData));
+    const raw=await callClaude([{role:'user',content:`Requirement: ${req}`}], INIT_SYSTEM);
     const data=JSON.parse(stripFences(raw));
     applyInferredParams(data.inferred_params||{});
     document.getElementById('paramControls').style.display='block';
     document.getElementById('content').classList.add('has-result');
     renderDashboard(data.report);
-    updateLiveBadge();
   } catch(e){
     showError(e.message);
   } finally {
@@ -930,7 +741,7 @@ async function doRecalc(){
   showUpdatingOverlay(true);
   try {
     const prompt=`Requirement: ${lastRequirement}\n\nCurrent parameters:\n${JSON.stringify(params,null,2)}`;
-    const raw=await callClaude([{role:'user',content:prompt}], buildUpdateSystem(liveDataCache));
+    const raw=await callClaude([{role:'user',content:prompt}], UPDATE_SYSTEM);
     const data=JSON.parse(stripFences(raw));
     renderDashboard(data.report);
   } catch(e){
@@ -943,18 +754,13 @@ async function doRecalc(){
 }
 
 // ── Render helpers ────────────────────────────────────────────────────────
-function showLoadingState(msg='Fetching live data…', sub='Querying artificialanalysis.ai'){
+function showLoadingState(){
   document.getElementById('rightPanel').innerHTML=`
-    <div class="loading-state" id="loadingState">
+    <div class="loading-state">
       <div class="loading-spinner"></div>
-      <div class="loading-text" id="loadingMsg">${msg}</div>
-      <div class="loading-sub" id="loadingSub">${sub}</div>
+      <div class="loading-text">Analysing requirements…</div>
+      <div class="loading-sub">Applying Three-Gate Framework</div>
     </div>`;
-}
-function updateLoadingState(msg, sub){
-  const m=document.getElementById('loadingMsg'), s=document.getElementById('loadingSub');
-  if(m) m.textContent=msg;
-  if(s) s.textContent=sub;
 }
 
 function showUpdatingOverlay(show){
@@ -1001,10 +807,7 @@ function renderDashboard(r){
     <div>
       <div class="section-eyebrow">Primary Recommendation</div>
       <div class="db-recommendation">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-          <div class="rec-eyebrow" style="margin-bottom:0;">RECOMMENDED MODEL · THREE-GATE ANALYSIS</div>
-          <span id="liveBadge" class="live-badge stale"><span class="live-dot"></span>Training data only</span>
-        </div>
+        <div class="rec-eyebrow">RECOMMENDED MODEL · THREE-GATE ANALYSIS</div>
         <div class="rec-model">${r.recommendation?.primary_model||'—'}</div>
         <div class="rec-provider">${r.recommendation?.provider||''}</div>
         <div class="rec-rationale">${r.recommendation?.primary_rationale||''}</div>
