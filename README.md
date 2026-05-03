@@ -1,4 +1,4 @@
-# I Built an Agent to Solve the Model Selection Problem Nobody Talks About
+# Agent to Solve the Model Selection Problem Nobody Talks About
 
 *Every team picks the wrong LLM. Here's why — and a framework for fixing it.*
 
@@ -218,24 +218,3 @@ The agent is a POC. These are the gaps that still matter.
 **A migration planner for teams already in production.** If you have a model running today and want to know what it would cost to move, the agent should take your current model as an input and produce an assessment: prompt engineering delta, fine-tuning portability, and eval rebuild effort. That's a different use case from initial selection, and it has a large addressable audience.
 
 ---
-
-## Stack
-
-- Vanilla HTML / CSS / JavaScript — no framework, no build step
-- IBM Plex Sans / Serif / Mono — type system
-- Anthropic Claude Sonnet 4 (`claude-sonnet-4-20250514`) via direct browser API call
-- `web_search_20250305` tool for live leaderboard data from artificialanalysis.ai
-- `localStorage` for API key persistence
-- Deployable to any static host (GitHub Pages, Netlify, Vercel)
-
-## Usage
-
-1. Clone the repo
-2. Open `index.html` in a browser
-3. Enter your Anthropic API key when prompted (stored locally, never transmitted elsewhere)
-4. Describe what you're building
-5. Adjust parameters on the dashboard to explore how the recommendation changes
-
-## License
-
-MIT
