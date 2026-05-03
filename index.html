@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Selector — Model Selection Framework</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f4f5f7; --surface:#fff; --surface2:#f0f1f4; --surface3:#e8eaed;
+  --border:#d0d4da; --border-dark:#b4b9c4;
+  --navy:#0f1f3d; --navy-mid:#1e3a5f; --navy-light:#2c5282;
+  --blue:#1a56db; --blue-h:#1447c0; --blue-light:#eef2ff; --blue-mid:#c7d7fd;
+  --text:#111827; --text-2:#374151; --text-m:#6b7280; --text-f:#9ca3af;
+  --green:#065f46; --green-bg:#ecfdf5; --green-b:#6ee7b7;
+  --amber:#92400e; --amber-bg:#fffbeb; --amber-b:#fcd34d;
+  --red:#991b1b; --red-bg:#fef2f2; --red-b:#fca5a5;
+  --sans:'IBM Plex Sans',sans-serif; --serif:'IBM Plex Serif',serif; --mono:'IBM Plex Mono',monospace;
+  --r:2px;
+  --shadow:0 2px 8px rgba(15,31,61,.09),0 0 0 1px rgba(15,31,61,.05);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;height:100vh;overflow:hidden;}
+
+/* ── Shell ── */
+.shell{display:grid;grid-template-rows:52px 1fr;height:100vh;}
+
+/* ── Header ── */
+header{background:var(--navy);display:flex;align-items:center;padding:0 20px;gap:0;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;}
+.hbrand{display:flex;align-items:center;gap:10px;padding-right:20px;border-right:1px solid rgba(255,255,255,.08);margin-right:4px;flex-shrink:0;}
+.hlogo{width:26px;height:26px;background:var(--blue);border-radius:3px;display:grid;place-items:center;flex-shrink:0;}
+.hlogo svg{width:13px;height:13px;fill:white;}
+.htxt{font-size:13.5px;font-weight:600;color:#fff;letter-spacing:-.01em;}
+.hver{font-family:var(--mono);font-size:8.5px;color:rgba(255,255,255,.3);letter-spacing:.07em;}
+.hnav{display:flex;align-items:center;}
+.hnav-item{font-size:12px;color:rgba(255,255,255,.45);padding:0 16px;height:52px;display:flex;align-items:center;border-bottom:2px solid transparent;cursor:default;font-weight:400;}
+.hnav-item.active{color:rgba(255,255,255,.95);border-bottom-color:#4f83f5;font-weight:500;}
+.hright{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.key-chip{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:2px;cursor:pointer;font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.04em;transition:opacity .15s;border:1px solid rgba(255,255,255,.12);}
+.key-chip:hover{opacity:.82;}
+.kdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.key-missing{color:#fbbf24;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.25);}
+.key-missing .kdot{background:#fbbf24;box-shadow:0 0 5px #fbbf24;}
+.key-set{color:#6ee7b7;background:rgba(110,231,183,.1);border-color:rgba(110,231,183,.25);}
+.key-set .kdot{background:#34d399;box-shadow:0 0 5px #34d399;}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;z-index:9999;background:rgba(15,31,61,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;}
+.modal-card{background:var(--surface);border:1px solid var(--border);border-radius:3px;box-shadow:0 8px 32px rgba(15,31,61,.18);width:420px;max-width:calc(100vw - 32px);overflow:hidden;}
+.mhead{background:var(--navy);padding:16px 20px;display:flex;align-items:center;gap:12px;}
+.mhead-logo{width:28px;height:28px;background:var(--blue);border-radius:3px;display:grid;place-items:center;flex-shrink:0;}
+.mtitle{font-size:14px;font-weight:600;color:#fff;letter-spacing:-.01em;}
+.msub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px;}
+.mbody{padding:20px;}
+.mlbl{display:block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text-m);margin-bottom:7px;}
+.minput{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:9px 12px;outline:none;border-radius:var(--r);transition:border-color .15s,box-shadow .15s;}
+.minput:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,86,219,.1);}
+.mhint{font-size:11px;color:var(--text-f);margin-top:10px;line-height:1.6;}
+.mhint strong{color:var(--text-m);font-weight:500;}
+.merr{margin-top:10px;padding:8px 10px;background:var(--red-bg);border:1px solid var(--red-b);border-left:3px solid var(--red);font-size:12px;color:var(--red);border-radius:var(--r);}
+.mfooter{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--surface2);}
+.mcancel{background:none;border:1px solid var(--border);color:var(--text-m);font-family:var(--sans);font-size:12px;font-weight:500;padding:7px 14px;cursor:pointer;border-radius:var(--r);transition:all .15s;}
+.mcancel:hover{border-color:var(--border-dark);color:var(--text);}
+.msave{background:var(--blue);border:none;color:white;font-family:var(--sans);font-size:12px;font-weight:600;padding:7px 18px;cursor:pointer;border-radius:var(--r);transition:background .15s;}
+.msave:hover{background:var(--blue-h);}
+
+/* ── Main content area ── */
+.content{display:grid;grid-template-columns:1fr;height:calc(100vh - 52px);overflow:hidden;transition:grid-template-columns .4s ease;}
+.content.has-result{grid-template-columns:380px 1fr;}
+
+/* ── Left panel: input ── */
+.left-panel{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.lp-head{background:var(--surface2);padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.lp-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text-m);}
+.lp-body{flex:1;padding:20px 18px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;}
+.lp-body::-webkit-scrollbar{width:3px;}
+.lp-body::-webkit-scrollbar-thumb{background:var(--border);}
+
+.input-label{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text-m);}
+.req-textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:13px;padding:10px 12px;outline:none;resize:none;border-radius:var(--r);line-height:1.6;transition:border-color .15s,box-shadow .15s;min-height:120px;}
+.req-textarea:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(26,86,219,.1);background:var(--surface);}
+.req-textarea::placeholder{color:var(--text-f);}
+
+.examples-label{font-size:10px;color:var(--text-f);text-transform:uppercase;letter-spacing:.08em;font-weight:500;margin-bottom:6px;}
+.example-chip{display:inline-block;background:var(--surface2);border:1px solid var(--border);color:var(--text-2);font-size:11px;padding:5px 10px;border-radius:12px;cursor:pointer;margin:0 4px 5px 0;transition:all .15s;line-height:1.3;}
+.example-chip:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light);}
+
+.analyse-btn{background:var(--navy);border:none;color:white;font-family:var(--sans);font-weight:600;font-size:13px;padding:11px 20px;cursor:pointer;border-radius:var(--r);width:100%;letter-spacing:.01em;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px;}
+.analyse-btn:hover{background:var(--navy-mid);}
+.analyse-btn:disabled{background:var(--surface3);color:var(--text-f);cursor:not-allowed;}
+
+.lp-divider{border:none;border-top:1px solid var(--border);}
+
+/* Param controls */
+.param-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text-f);margin-bottom:10px;}
+
+.param-row{margin-bottom:14px;}
+.param-label-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+.param-name{font-size:11px;font-weight:600;color:var(--text-2);}
+.param-val{font-family:var(--mono);font-size:10.5px;color:var(--blue);font-weight:500;}
+
+.param-slider{width:100%;-webkit-appearance:none;appearance:none;height:4px;background:var(--surface3);border-radius:2px;outline:none;border:1px solid var(--border);cursor:pointer;transition:background .15s;}
+.param-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--blue);border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:pointer;transition:transform .1s;}
+.param-slider:hover::-webkit-slider-thumb{transform:scale(1.15);}
+
+.param-select{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:11px;padding:6px 9px;outline:none;border-radius:var(--r);cursor:pointer;transition:border-color .15s;}
+.param-select:focus{border-color:var(--blue);}
+
+.toggle-row{display:flex;align-items:center;justify-content:space-between;}
+.toggle-wrap{position:relative;width:36px;height:20px;flex-shrink:0;}
+.toggle-input{position:absolute;opacity:0;width:0;height:0;}
+.toggle-track{position:absolute;inset:0;background:var(--surface3);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:background .2s,border-color .2s;}
+.toggle-input:checked~.toggle-track{background:var(--blue);border-color:var(--blue);}
+.toggle-thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:white;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .2s;}
+.toggle-input:checked~.toggle-track .toggle-thumb{transform:translateX(16px);}
+
+.recalc-note{font-size:10.5px;color:var(--text-f);text-align:center;font-style:italic;}
+
+/* ── Right panel: dashboard ── */
+.right-panel{overflow-y:auto;background:var(--bg);padding:24px 28px;}
+.right-panel::-webkit-scrollbar{width:4px;}
+.right-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* Loading state */
+.loading-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;color:var(--text-m);}
+.loading-spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-text{font-size:13px;color:var(--text-m);}
+.loading-sub{font-size:11px;color:var(--text-f);margin-top:-8px;}
+
+/* Empty state */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:40px;text-align:center;}
+.empty-icon{width:48px;height:48px;background:var(--surface3);border-radius:50%;display:grid;place-items:center;color:var(--text-f);}
+.empty-title{font-size:15px;font-weight:600;color:var(--text-2);}
+.empty-sub{font-size:12px;color:var(--text-m);max-width:320px;line-height:1.65;}
+
+/* ── Dashboard cards ── */
+.db-grid{display:grid;gap:16px;}
+
+.db-recommendation{background:var(--navy);border-radius:var(--r);padding:20px 22px;position:relative;overflow:hidden;}
+.db-recommendation::before{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;background:rgba(26,86,219,.15);border-radius:50%;}
+.rec-eyebrow{font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px;}
+.rec-model{font-family:var(--serif);font-size:28px;font-weight:600;color:#fff;letter-spacing:-.02em;line-height:1.1;}
+.rec-provider{font-size:12px;color:rgba(255,255,255,.5);margin-top:3px;}
+.rec-rationale{font-size:12px;color:rgba(255,255,255,.7);margin-top:12px;line-height:1.7;max-width:560px;}
+.rec-badges{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+.rec-badge{font-family:var(--mono);font-size:9.5px;padding:3px 9px;border-radius:2px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;}
+.rb-low{background:rgba(110,231,183,.15);color:#6ee7b7;border:1px solid rgba(110,231,183,.25);}
+.rb-med{background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.25);}
+.rb-high{background:rgba(252,165,165,.15);color:#fca5a5;border:1px solid rgba(252,165,165,.25);}
+.rb-neutral{background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);}
+
+.runner-up-strip{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 16px;display:flex;align-items:center;gap:12px;}
+.ru-label{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text-f);flex-shrink:0;}
+.ru-model{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--navy);}
+.ru-reason{font-size:11px;color:var(--text-m);flex:1;}
+
+/* Gate cards row */
+.gates-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.gate-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;box-shadow:0 1px 3px rgba(15,31,61,.05);}
+.gc-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.gc-num{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-size:10px;font-weight:500;background:var(--blue-light);border:1px solid var(--blue-mid);color:var(--blue);flex-shrink:0;}
+.gc-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text);}
+.gc-badge{margin-left:auto;font-family:var(--mono);font-size:8.5px;font-weight:600;padding:2px 7px;border-radius:2px;text-transform:uppercase;letter-spacing:.05em;}
+.gcb-pass{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b);}
+.gc-body{font-size:11.5px;color:var(--text-2);line-height:1.65;}
+.gc-body .dim{color:var(--text-m);font-size:10.5px;margin-top:3px;display:block;}
+.gc-shortlist{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;}
+.gc-pill{font-family:var(--mono);font-size:9.5px;background:var(--blue-light);border:1px solid var(--blue-mid);color:var(--blue);padding:2px 7px;border-radius:2px;}
+
+/* Score bar */
+.score-block{margin-top:10px;padding-top:10px;border-top:1px solid var(--surface3);}
+.score-lbl-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;}
+.score-lbl{font-size:10px;color:var(--text-m);font-weight:500;}
+.score-num{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--navy);}
+.score-track{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;border:1px solid var(--border);}
+.score-fill{height:100%;border-radius:3px;transition:width .8s ease;}
+.sf-high{background:#059669;}
+.sf-med{background:#d97706;}
+.sf-low{background:#dc2626;}
+
+/* Flags + checklist */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;}
+.ic-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.flag-row{display:flex;gap:8px;padding:6px 9px;background:var(--amber-bg);border:1px solid var(--amber-b);border-left:3px solid #d97706;margin-bottom:5px;font-size:11.5px;color:var(--amber);line-height:1.5;border-radius:0 var(--r) var(--r) 0;}
+.check-row{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--surface3);font-size:11.5px;color:var(--text-2);line-height:1.5;}
+.chkbox{width:13px;height:13px;border:1.5px solid var(--border-dark);border-radius:2px;flex-shrink:0;margin-top:2px;background:var(--surface);}
+
+/* Decision table */
+.full-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;}
+.dtable{width:100%;border-collapse:collapse;font-size:11.5px;}
+.dtable th{background:var(--surface2);border:1px solid var(--border);padding:6px 10px;text-align:left;font-weight:600;color:var(--text-m);text-transform:uppercase;letter-spacing:.08em;font-size:9px;}
+.dtable td{border:1px solid var(--border);padding:8px 10px;color:var(--text-2);vertical-align:top;line-height:1.55;}
+.dtable tr:nth-child(even) td{background:var(--surface2);}
+.dtable .col-g{font-weight:600;color:var(--navy);white-space:nowrap;}
+.dtable .col-d{font-family:var(--mono);font-size:10.5px;color:var(--blue);}
+
+/* Updating overlay */
+.updating-overlay{position:absolute;inset:0;background:rgba(244,245,247,.7);display:flex;align-items:center;justify-content:center;border-radius:var(--r);z-index:10;backdrop-filter:blur(1px);}
+.updating-label{font-size:11px;color:var(--text-m);display:flex;align-items:center;gap:8px;}
+.mini-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite;}
+
+/* Section label */
+.section-eyebrow{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text-f);margin-bottom:8px;}
+
+/* Animate in */
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.animate-in{animation:fadeUp .35s ease forwards;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ── Header ── -->
+<header>
+  <div class="hbrand">
+    <div class="hlogo"><svg viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6"/><rect x="9" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><circle cx="12" cy="12" r="3"/></svg></div>
+    <div>
+      <div class="htxt">LLM Selector</div>
+      <div class="hver">ENTERPRISE · v2.0</div>
+    </div>
+  </div>
+  <nav class="hnav">
+    <div class="hnav-item active">Model Selection</div>
+      </nav>
+  <div class="hright">
+    <div id="keyChip" class="key-chip key-missing" onclick="showKeyModal()">
+      <span class="kdot"></span>
+      <span id="keyChipLabel">No API Key</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── API Key Modal ── -->
+<div id="keyModal" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div class="mhead">
+      <div class="mhead-logo"><svg width="13" height="13" viewBox="0 0 16 16" fill="white"><rect x="1" y="1" width="6" height="6"/><rect x="9" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><circle cx="12" cy="12" r="3"/></svg></div>
+      <div>
+        <div class="mtitle">Anthropic API Key</div>
+        <div class="msub">Stored in your browser only — never sent elsewhere.</div>
+      </div>
+    </div>
+    <div class="mbody">
+      <label class="mlbl" for="modalKey">API Key</label>
+      <input class="minput" id="modalKey" type="password" placeholder="sk-ant-api03-…" autocomplete="off" onkeydown="if(event.key==='Enter')saveKey()">
+      <div class="mhint">Get your key at <strong>console.anthropic.com</strong>. Saved to localStorage so you only need to enter it once.</div>
+      <div id="modalErr" class="merr" style="display:none;"></div>
+    </div>
+    <div class="mfooter">
+      <button class="mcancel" id="mCancelBtn" onclick="closeKeyModal()">Cancel</button>
+      <button class="msave" onclick="saveKey()">Save &amp; Continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Content ── -->
+<div class="content" id="content">
+
+  <!-- Left panel -->
+  <div class="left-panel">
+    <div class="lp-head">
+      <div class="lp-title">Requirements &amp; Parameters</div>
+    </div>
+    <div class="lp-body">
+
+      <!-- Requirement input -->
+      <div>
+        <div class="input-label" style="margin-bottom:7px;">Describe your use case</div>
+        <textarea class="req-textarea" id="reqInput" rows="5"
+          placeholder="e.g. I'm building a contract extraction agent for a legal tech startup. 2 engineers, early stage. Need to pull key clauses from uploaded PDFs reliably."></textarea>
+      </div>
+
+      <!-- Example chips -->
+      <div>
+        <div class="examples-label">Examples</div>
+        <span class="example-chip" onclick="setExample(this)">Customer support chatbot, SMB, 5 engineers</span>
+        <span class="example-chip" onclick="setExample(this)">Multi-agent research pipeline, enterprise, Azure</span>
+        <span class="example-chip" onclick="setExample(this)">Code review tool, 2-person startup, pre-PMF</span>
+        <span class="example-chip" onclick="setExample(this)">RAG over internal docs, fintech, data sovereignty</span>
+        <span class="example-chip" onclick="setExample(this)">Browser automation agent, post-PMF, high volume</span>
+      </div>
+
+      <button class="analyse-btn" id="analyseBtn" onclick="runAnalysis()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zM6.5 5.5l4 2.5-4 2.5V5.5z"/></svg>
+        Analyse Requirements
+      </button>
+
+      <hr class="lp-divider">
+
+      <!-- Parameter controls — hidden until first analysis -->
+      <div id="paramControls" style="display:none;">
+        <div class="param-section-title">Gate 1 — Capability</div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Task Type</span>
+          </div>
+          <select class="param-select" id="p_taskType" onchange="scheduleRecalc()">
+            <option value="retrieval">Retrieval</option>
+            <option value="extraction">Extraction</option>
+            <option value="qa">Q&amp;A</option>
+            <option value="reasoning">Reasoning</option>
+            <option value="code">Code</option>
+            <option value="summarization">Summarization</option>
+            <option value="tool_use">Tool Use</option>
+            <option value="multimodal">Multimodal</option>
+            <option value="agentic_workflow">Agentic Workflow</option>
+            <option value="multi_agent">Multi-Agent Orchestration</option>
+            <option value="function_calling">Tool / Function Calling</option>
+            <option value="browser_use">Browser / Computer Use</option>
+            <option value="rag_pipeline">RAG Pipeline</option>
+            <option value="agent_memory">Agent Memory &amp; State</option>
+          </select>
+        </div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Context Window</span>
+            <span class="param-val" id="v_context">Medium (8–32k)</span>
+          </div>
+          <input type="range" class="param-slider" id="p_context" min="0" max="3" step="1" value="1" oninput="updateSliderLabel('p_context','v_context',['Small &lt;8k','Medium (8–32k)','Large (32–128k)','Very Large 128k+']);scheduleRecalc()">
+        </div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Accuracy Priority</span>
+            <span class="param-val" id="v_accuracy">High</span>
+          </div>
+          <input type="range" class="param-slider" id="p_accuracy" min="0" max="3" step="1" value="2" oninput="updateSliderLabel('p_accuracy','v_accuracy',['Low','Medium','High','Critical']);scheduleRecalc()">
+        </div>
+
+        <hr class="lp-divider" style="margin:4px 0 14px;">
+        <div class="param-section-title">Gate 2 — Infrastructure</div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Team Size</span>
+            <span class="param-val" id="v_team">3–10</span>
+          </div>
+          <input type="range" class="param-slider" id="p_team" min="0" max="3" step="1" value="1" oninput="updateSliderLabel('p_team','v_team',['1–2 engineers','3–10 engineers','11–50 engineers','50+ engineers']);scheduleRecalc()">
+        </div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Company Stage</span>
+          </div>
+          <select class="param-select" id="p_stage" onchange="scheduleRecalc()">
+            <option value="pre_pmf">Pre-PMF</option>
+            <option value="post_pmf" selected>Post-PMF / Scaling</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Monthly Budget (USD)</span>
+            <span class="param-val" id="v_budget">$1,000–$5,000</span>
+          </div>
+          <input type="range" class="param-slider" id="p_budget" min="0" max="4" step="1" value="2" oninput="updateSliderLabel('p_budget','v_budget',['&lt;$500','$500–$1k','$1k–$5k','$5k–$20k','$20k+']);scheduleRecalc()">
+        </div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Data Sovereignty Required</span>
+            <label class="toggle-wrap">
+              <input type="checkbox" class="toggle-input" id="p_sovereignty" onchange="scheduleRecalc()">
+              <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Cloud Provider</span>
+          </div>
+          <select class="param-select" id="p_cloud" onchange="scheduleRecalc()">
+            <option value="none">None / Undecided</option>
+            <option value="aws">AWS</option>
+            <option value="azure">Azure</option>
+            <option value="gcp">GCP</option>
+          </select>
+        </div>
+
+        <hr class="lp-divider" style="margin:4px 0 14px;">
+        <div class="param-section-title">Gate 3 — Trajectory</div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Lock-in Tolerance</span>
+            <span class="param-val" id="v_lockin">Medium</span>
+          </div>
+          <input type="range" class="param-slider" id="p_lockin" min="0" max="2" step="1" value="1" oninput="updateSliderLabel('p_lockin','v_lockin',['Low — avoid lock-in','Medium — some ok','High — fine with it']);scheduleRecalc()">
+        </div>
+
+        <div class="param-row">
+          <div class="param-label-row">
+            <span class="param-name">Time Horizon</span>
+            <span class="param-val" id="v_horizon">12 months</span>
+          </div>
+          <input type="range" class="param-slider" id="p_horizon" min="0" max="3" step="1" value="2" oninput="updateSliderLabel('p_horizon','v_horizon',['3 months','6 months','12 months','24 months']);scheduleRecalc()">
+        </div>
+
+        <div class="param-row" style="margin-bottom:0;">
+          <div class="param-label-row">
+            <span class="param-name">Migration Capacity</span>
+            <span class="param-val" id="v_migration">Moderate</span>
+          </div>
+          <input type="range" class="param-slider" id="p_migration" min="0" max="3" step="1" value="2" oninput="updateSliderLabel('p_migration','v_migration',['None','Limited','Moderate','Strong']);scheduleRecalc()">
+        </div>
+
+        <div class="recalc-note" id="recalcNote" style="display:none;margin-top:12px;">
+          <span class="mini-spinner" style="display:inline-block;vertical-align:middle;margin-right:5px;"></span>Recalculating…
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel" id="rightPanel">
+    <div class="empty-state">
+      <div class="empty-icon">
+        <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div class="empty-title">Describe your use case</div>
+      <div class="empty-sub">Enter a brief description of what you're building on the left. LLM Selector will analyse it and recommend the best model using the Three-Gate Framework.</div>
+    </div>
+  </div>
+
+</div><!-- .content -->
+</div><!-- .shell -->
+
+<script>
+// ── API Key ───────────────────────────────────────────────────────────────
+function getKey(){return localStorage.getItem('llmsel_key')||'';}
+function updateKeyChip(){
+  const k=getKey(),chip=document.getElementById('keyChip'),lbl=document.getElementById('keyChipLabel');
+  if(k){chip.className='key-chip key-set';lbl.textContent='API Key Set';}
+  else{chip.className='key-chip key-missing';lbl.textContent='No API Key';}
+}
+function showKeyModal(){
+  const ex=getKey();
+  const inp=document.getElementById('modalKey');
+  inp.value=ex?'••••••••••••••••':'';
+  inp.dataset.hasEx=ex?'1':'0';
+  document.getElementById('modalErr').style.display='none';
+  document.getElementById('mCancelBtn').style.display=ex?'inline-block':'none';
+  document.getElementById('keyModal').style.display='flex';
+  setTimeout(()=>{if(!ex)inp.focus();},50);
+}
+function closeKeyModal(){document.getElementById('keyModal').style.display='none';}
+function saveKey(){
+  const inp=document.getElementById('modalKey');
+  let v=inp.value.trim();
+  if(v==='••••••••••••••••'&&inp.dataset.hasEx==='1'){closeKeyModal();return;}
+  if(!v||!v.startsWith('sk-')){
+    const e=document.getElementById('modalErr');
+    e.textContent='Please enter a valid Anthropic API key starting with sk-ant-…';
+    e.style.display='block';return;
+  }
+  localStorage.setItem('llmsel_key',v);
+  updateKeyChip();closeKeyModal();
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+let recalcTimer=null;
+let isLoading=false;
+let lastRequirement='';
+
+// ── Slider labels ─────────────────────────────────────────────────────────
+function updateSliderLabel(sliderId,labelId,labels){
+  const v=parseInt(document.getElementById(sliderId).value);
+  document.getElementById(labelId).innerHTML=labels[v];
+  // update slider fill
+  updateSliderFill(sliderId);
+}
+function updateSliderFill(id){
+  const el=document.getElementById(id);
+  const pct=(el.value-el.min)/(el.max-el.min)*100;
+  el.style.background=`linear-gradient(to right, var(--blue) ${pct}%, var(--surface3) ${pct}%)`;
+}
+function initSliderFills(){
+  ['p_context','p_accuracy','p_team','p_budget','p_lockin','p_horizon','p_migration'].forEach(updateSliderFill);
+}
+
+// ── Get current params ─────────────────────────────────────────────────────
+function getParams(){
+  const contextLabels=['small (<8k)','medium (8-32k)','large (32-128k)','very large (128k+)'];
+  const accuracyLabels=['low','medium','high','critical'];
+  const teamLabels=['1-2 engineers','3-10 engineers','11-50 engineers','50+ engineers'];
+  const budgetLabels=['<$500/mo','$500-$1k/mo','$1k-$5k/mo','$5k-$20k/mo','$20k+/mo'];
+  const lockinLabels=['low - avoid lock-in','medium - some ok','high - fine with it'];
+  const horizonLabels=['3 months','6 months','12 months','24 months'];
+  const migrationLabels=['none','limited','moderate','strong'];
+  return {
+    task_type: document.getElementById('p_taskType').value,
+    context_window: contextLabels[document.getElementById('p_context').value],
+    accuracy_priority: accuracyLabels[document.getElementById('p_accuracy').value],
+    team_size: teamLabels[document.getElementById('p_team').value],
+    stage: document.getElementById('p_stage').value,
+    monthly_budget: budgetLabels[document.getElementById('p_budget').value],
+    data_sovereignty: document.getElementById('p_sovereignty').checked,
+    cloud_provider: document.getElementById('p_cloud').value,
+    lock_in_tolerance: lockinLabels[document.getElementById('p_lockin').value],
+    time_horizon: horizonLabels[document.getElementById('p_horizon').value],
+    migration_capacity: migrationLabels[document.getElementById('p_migration').value],
+  };
+}
+
+// ── Apply inferred params to controls ──────────────────────────────────────
+function applyInferredParams(p){
+  // task type
+  const tt=document.getElementById('p_taskType');
+  if(p.task_type) tt.value=p.task_type;
+
+  // context window
+  const cmap={small:0,medium:1,large:2,very_large:3};
+  if(p.context_window!==undefined) setSlider('p_context',cmap[p.context_window]||1);
+
+  // accuracy
+  const amap={low:0,medium:1,high:2,critical:3};
+  if(p.accuracy_priority!==undefined) setSlider('p_accuracy',amap[p.accuracy_priority]||2);
+
+  // team size
+  const tmap={'1_2':0,'3_10':1,'11_50':2,'50plus':3};
+  if(p.team_size!==undefined) setSlider('p_team',tmap[p.team_size]||1);
+
+  // stage
+  const st=document.getElementById('p_stage');
+  if(p.stage) st.value=p.stage;
+
+  // budget
+  const bmap={tier0:0,tier1:1,tier2:2,tier3:3,tier4:4};
+  if(p.budget_tier!==undefined) setSlider('p_budget',p.budget_tier);
+
+  // sovereignty
+  if(p.data_sovereignty!==undefined) document.getElementById('p_sovereignty').checked=!!p.data_sovereignty;
+
+  // cloud
+  const cl=document.getElementById('p_cloud');
+  if(p.cloud_provider) cl.value=p.cloud_provider;
+
+  // lock-in
+  const lmap={low:0,medium:1,high:2};
+  if(p.lock_in_tolerance!==undefined) setSlider('p_lockin',lmap[p.lock_in_tolerance]||1);
+
+  // horizon
+  const hmap={'3m':0,'6m':1,'12m':2,'24m':3};
+  if(p.time_horizon!==undefined) setSlider('p_horizon',hmap[p.time_horizon]||2);
+
+  // migration
+  const mmap={none:0,limited:1,moderate:2,strong:3};
+  if(p.migration_capacity!==undefined) setSlider('p_migration',mmap[p.migration_capacity]||2);
+
+  // refresh all label displays
+  updateSliderLabel('p_context','v_context',['Small &lt;8k','Medium (8–32k)','Large (32–128k)','Very Large 128k+']);
+  updateSliderLabel('p_accuracy','v_accuracy',['Low','Medium','High','Critical']);
+  updateSliderLabel('p_team','v_team',['1–2 engineers','3–10 engineers','11–50 engineers','50+ engineers']);
+  updateSliderLabel('p_budget','v_budget',['&lt;$500','$500–$1k','$1k–$5k','$5k–$20k','$20k+']);
+  updateSliderLabel('p_lockin','v_lockin',['Low — avoid lock-in','Medium — some ok','High — fine with it']);
+  updateSliderLabel('p_horizon','v_horizon',['3 months','6 months','12 months','24 months']);
+  updateSliderLabel('p_migration','v_migration',['None','Limited','Moderate','Strong']);
+  initSliderFills();
+}
+
+function setSlider(id,val){
+  const el=document.getElementById(id);
+  if(el){el.value=val;updateSliderFill(id);}
+}
+
+// ── Example chips ─────────────────────────────────────────────────────────
+function setExample(el){
+  document.getElementById('reqInput').value=el.textContent;
+  document.getElementById('reqInput').focus();
+}
+
+// ── Claude API ────────────────────────────────────────────────────────────
+async function callClaude(messages, systemPrompt){
+  const key=getKey();
+  if(!key) throw new Error('No API key set');
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,system:systemPrompt,messages})
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||`HTTP ${res.status}`);}
+  const data=await res.json();
+  return data.content.map(b=>b.text||'').join('');
+}
+
+// ── System prompts ────────────────────────────────────────────────────────
+const INIT_SYSTEM=`You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
+
+TASK: Given a user's requirement description, do two things:
+1. Infer the 9 parameters below from the description (use sensible defaults if not mentioned)
+2. Generate a full recommendation report
+
+OUTPUT FORMAT: Return ONLY valid JSON in this exact structure, no other text:
+{
+  "inferred_params": {
+    "task_type": "one of: retrieval|extraction|qa|reasoning|code|summarization|tool_use|multimodal|agentic_workflow|multi_agent|function_calling|browser_use|rag_pipeline|agent_memory",
+    "context_window": "one of: small|medium|large|very_large",
+    "accuracy_priority": "one of: low|medium|high|critical",
+    "team_size": "one of: 1_2|3_10|11_50|50plus",
+    "stage": "one of: pre_pmf|post_pmf|enterprise",
+    "budget_tier": 2,
+    "data_sovereignty": false,
+    "cloud_provider": "one of: none|aws|azure|gcp",
+    "lock_in_tolerance": "one of: low|medium|high",
+    "time_horizon": "one of: 3m|6m|12m|24m",
+    "migration_capacity": "one of: none|limited|moderate|strong"
+  },
+  "report": {
+    "recommendation": {
+      "primary_model": "Model Name",
+      "provider": "Provider Name",
+      "primary_rationale": "2-3 sentences explaining why this model passes all three gates for this specific use case",
+      "runner_up": "Model Name",
+      "runner_up_condition": "When to use instead"
+    },
+    "gate1": {
+      "benchmark_note": "Task-specific benchmark insight — NOT general reputation",
+      "context_fit": "Context window assessment",
+      "shortlist": ["Model A", "Model B", "Model C"]
+    },
+    "gate2": {
+      "hosting_path": "Recommended hosting approach given team and stage",
+      "cost_estimate": "Estimated monthly cost at their budget tier",
+      "compliance_note": "Data sovereignty / compliance assessment"
+    },
+    "gate3": {
+      "replaceability_score": 6,
+      "migration_risk": "LOW",
+      "score_breakdown": "Brief breakdown of 0-8 replaceability score",
+      "trajectory_note": "12-month outlook for this model"
+    },
+    "screenshots_checklist": ["Specific leaderboard/benchmark to capture", "Cost comparison to capture"],
+    "red_flags": ["Any concern or conflict detected — or empty string if none"],
+    "decision_log": [
+      {"gate": "Capability", "decision": "short decision", "rationale": "reason"},
+      {"gate": "Infrastructure", "decision": "short decision", "rationale": "reason"},
+      {"gate": "Trajectory", "decision": "short decision", "rationale": "reason"}
+    ]
+  }
+}`;
+
+const UPDATE_SYSTEM=`You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
+
+TASK: Given a user's requirement description AND their current parameter settings, generate an updated recommendation report.
+
+OUTPUT FORMAT: Return ONLY valid JSON with a "report" key containing the report object. No other text.
+{
+  "report": {
+    "recommendation": {
+      "primary_model": "Model Name",
+      "provider": "Provider Name",
+      "primary_rationale": "2-3 sentences",
+      "runner_up": "Model Name",
+      "runner_up_condition": "When to use instead"
+    },
+    "gate1": {
+      "benchmark_note": "Task-specific benchmark insight",
+      "context_fit": "Context window assessment",
+      "shortlist": ["Model A", "Model B", "Model C"]
+    },
+    "gate2": {
+      "hosting_path": "Recommended hosting approach",
+      "cost_estimate": "Estimated monthly cost",
+      "compliance_note": "Data sovereignty assessment"
+    },
+    "gate3": {
+      "replaceability_score": 6,
+      "migration_risk": "LOW",
+      "score_breakdown": "Breakdown of 0-8 score",
+      "trajectory_note": "12-month outlook"
+    },
+    "screenshots_checklist": ["item1", "item2"],
+    "red_flags": ["flag or empty string"],
+    "decision_log": [
+      {"gate": "Capability", "decision": "...", "rationale": "..."},
+      {"gate": "Infrastructure", "decision": "...", "rationale": "..."},
+      {"gate": "Trajectory", "decision": "...", "rationale": "..."}
+    ]
+  }
+}`;
+
+
+// ── Strip markdown fences from API responses ──────────────────────────────
+function stripFences(s){
+  return s.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+}
+
+// ── Run initial analysis ───────────────────────────────────────────────────
+async function runAnalysis(){
+  if(!getKey()){showKeyModal();return;}
+  const req=document.getElementById('reqInput').value.trim();
+  if(!req){
+    document.getElementById('reqInput').focus();
+    document.getElementById('reqInput').style.borderColor='var(--red)';
+    setTimeout(()=>document.getElementById('reqInput').style.borderColor='',1500);
+    return;
+  }
+  lastRequirement=req;
+  isLoading=true;
+  const btn=document.getElementById('analyseBtn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="mini-spinner" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;"></span> Analysing…';
+
+  showLoadingState();
+
+  try {
+    const raw=await callClaude([{role:'user',content:`Requirement: ${req}`}], INIT_SYSTEM);
+    const data=JSON.parse(stripFences(raw));
+    applyInferredParams(data.inferred_params||{});
+    document.getElementById('paramControls').style.display='block';
+    document.getElementById('content').classList.add('has-result');
+    renderDashboard(data.report);
+  } catch(e){
+    showError(e.message);
+  } finally {
+    isLoading=false;
+    btn.disabled=false;
+    btn.innerHTML='<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zM6.5 5.5l4 2.5-4 2.5V5.5z"/></svg> Re-analyse';
+  }
+}
+
+// ── Recalculate on param change ────────────────────────────────────────────
+function scheduleRecalc(){
+  if(!lastRequirement) return;
+  clearTimeout(recalcTimer);
+  document.getElementById('recalcNote').style.display='block';
+  recalcTimer=setTimeout(doRecalc, 1200);
+}
+
+async function doRecalc(){
+  if(!lastRequirement||isLoading) return;
+  isLoading=true;
+  const params=getParams();
+  showUpdatingOverlay(true);
+  try {
+    const prompt=`Requirement: ${lastRequirement}\n\nCurrent parameters:\n${JSON.stringify(params,null,2)}`;
+    const raw=await callClaude([{role:'user',content:prompt}], UPDATE_SYSTEM);
+    const data=JSON.parse(stripFences(raw));
+    renderDashboard(data.report);
+  } catch(e){
+    console.error('Recalc error:',e);
+  } finally {
+    isLoading=false;
+    showUpdatingOverlay(false);
+    document.getElementById('recalcNote').style.display='none';
+  }
+}
+
+// ── Render helpers ────────────────────────────────────────────────────────
+function showLoadingState(){
+  document.getElementById('rightPanel').innerHTML=`
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Analysing requirements…</div>
+      <div class="loading-sub">Applying Three-Gate Framework</div>
+    </div>`;
+}
+
+function showUpdatingOverlay(show){
+  const rp=document.getElementById('rightPanel');
+  let ov=document.getElementById('updatingOverlay');
+  if(show){
+    if(!ov){
+      ov=document.createElement('div');
+      ov.id='updatingOverlay';
+      ov.className='updating-overlay';
+      ov.innerHTML='<div class="updating-label"><span class="mini-spinner"></span>Recalculating recommendation…</div>';
+      rp.style.position='relative';
+      rp.appendChild(ov);
+    }
+  } else {
+    if(ov) ov.remove();
+  }
+}
+
+function showError(msg){
+  document.getElementById('rightPanel').innerHTML=`
+    <div class="loading-state">
+      <div style="color:var(--red);font-size:13px;font-weight:600;">Analysis failed</div>
+      <div style="color:var(--text-m);font-size:12px;max-width:320px;text-align:center;line-height:1.65;">${msg}</div>
+    </div>`;
+}
+
+function renderDashboard(r){
+  if(!r){showError('Invalid response from API');return;}
+  const sc=r.gate3?.replaceability_score||0;
+  const risk=r.gate3?.migration_risk||'MEDIUM';
+  const sfClass=sc>=6?'sf-high':sc>=4?'sf-med':'sf-low';
+  const riskBadge=risk==='LOW'?'rb-low':risk==='HIGH'?'rb-high':'rb-med';
+  const flags=(r.red_flags||[]).filter(f=>f&&f.length>2);
+  const flagsHtml=flags.length
+    ? flags.map(f=>`<div class="flag-row">⚠ ${f}</div>`).join('')
+    : '<div style="font-size:11.5px;color:var(--text-m);padding:4px 0;">No critical conflicts detected.</div>';
+  const checkHtml=(r.screenshots_checklist||[]).map(i=>`<div class="check-row"><div class="chkbox"></div><div>${i}</div></div>`).join('');
+  const logHtml=(r.decision_log||[]).map(row=>`<tr><td class="col-g">${row.gate}</td><td class="col-d">${row.decision}</td><td>${row.rationale}</td></tr>`).join('');
+
+  document.getElementById('rightPanel').innerHTML=`
+  <div class="db-grid animate-in">
+
+    <div>
+      <div class="section-eyebrow">Primary Recommendation</div>
+      <div class="db-recommendation">
+        <div class="rec-eyebrow">RECOMMENDED MODEL · THREE-GATE ANALYSIS</div>
+        <div class="rec-model">${r.recommendation?.primary_model||'—'}</div>
+        <div class="rec-provider">${r.recommendation?.provider||''}</div>
+        <div class="rec-rationale">${r.recommendation?.primary_rationale||''}</div>
+        <div class="rec-badges">
+          <span class="rec-badge ${riskBadge}">${risk} Migration Risk</span>
+          <span class="rec-badge rb-neutral">Replaceability ${sc}/8</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="runner-up-strip">
+      <div class="ru-label">Runner-up</div>
+      <div class="ru-model">${r.recommendation?.runner_up||'—'}</div>
+      <div class="ru-reason">${r.recommendation?.runner_up_condition||''}</div>
+    </div>
+
+    <div>
+      <div class="section-eyebrow">Gate Analysis</div>
+      <div class="gates-row">
+        <div class="gate-card">
+          <div class="gc-head">
+            <div class="gc-num">1</div>
+            <div class="gc-title">Capability</div>
+            <span class="gc-badge gcb-pass">Pass</span>
+          </div>
+          <div class="gc-body">
+            ${r.gate1?.benchmark_note||''}
+            <span class="dim">${r.gate1?.context_fit||''}</span>
+            <div class="gc-shortlist">${(r.gate1?.shortlist||[]).map(m=>`<span class="gc-pill">${m}</span>`).join('')}</div>
+          </div>
+        </div>
+        <div class="gate-card">
+          <div class="gc-head">
+            <div class="gc-num">2</div>
+            <div class="gc-title">Infrastructure</div>
+            <span class="gc-badge gcb-pass">Pass</span>
+          </div>
+          <div class="gc-body">
+            ${r.gate2?.hosting_path||''}
+            <span class="dim">Est. cost: ${r.gate2?.cost_estimate||'—'}</span>
+            <span class="dim">${r.gate2?.compliance_note||''}</span>
+          </div>
+        </div>
+        <div class="gate-card">
+          <div class="gc-head">
+            <div class="gc-num">3</div>
+            <div class="gc-title">Trajectory</div>
+            <span class="gc-badge gcb-pass">Pass</span>
+          </div>
+          <div class="gc-body">
+            ${r.gate3?.trajectory_note||''}
+            <span class="dim">${r.gate3?.score_breakdown||''}</span>
+            <div class="score-block">
+              <div class="score-lbl-row">
+                <span class="score-lbl">Replaceability Index</span>
+                <span class="score-num">${sc} / 8</span>
+              </div>
+              <div class="score-track"><div class="score-fill ${sfClass}" style="width:${(sc/8)*100}%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="info-card">
+        <div class="ic-title">Risk &amp; Flags</div>
+        ${flagsHtml}
+      </div>
+      <div class="info-card">
+        <div class="ic-title">Documentation Checklist</div>
+        ${checkHtml}
+      </div>
+    </div>
+
+    <div class="full-card">
+      <div class="ic-title" style="margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);">Decision Log</div>
+      <table class="dtable">
+        <thead><tr><th style="width:100px;">Gate</th><th style="width:150px;">Decision</th><th>Rationale</th></tr></thead>
+        <tbody>${logHtml}</tbody>
+      </table>
+    </div>
+
+  </div>`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+window.addEventListener('load',()=>{
+  updateKeyChip();
+  initSliderFills();
+  if(!getKey()) showKeyModal();
+});
+</script>
+</body>
+</html>
