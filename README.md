@@ -31,6 +31,8 @@ LLM Selector is a single-page browser agent that takes one input — a plain-lan
 
 **Key behaviour:** After the initial recommendation, every parameter on the dashboard is adjustable — task type, context window, team size, budget, data sovereignty, cloud provider, lock-in tolerance, time horizon. Change any of them and the recommendation recalculates automatically. This turns a one-time output into an interactive decision tool.
 
+**Live benchmark data:** When you submit a requirement, the agent doesn't reason from static training knowledge alone. As part of the analysis call, it uses Anthropic's `web_search` tool to query [artificialanalysis.ai](https://artificialanalysis.ai) for current model rankings — intelligence index scores, coding and math benchmarks, pricing per million tokens, and output speed. This search happens once per session, at the moment you click Analyse, before the recommendation is generated. The results are injected directly into the system prompt so Claude's shortlist and benchmark notes are grounded in scores from the actual leaderboard at that point in time, not from whenever the model was last trained. A live data badge on the dashboard shows whether the search succeeded and how fresh the data is. If the search fails for any reason, the agent falls back to training knowledge and flags it clearly — the recommendation still runs, it's just not live-grounded.
+
 The agent runs entirely in the browser. Your Anthropic API key is stored in `localStorage` and never leaves your device except in direct calls to Anthropic's API.
 
 ---
