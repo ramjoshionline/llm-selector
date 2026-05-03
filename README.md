@@ -1,7 +1,5 @@
 # LLM Selector — A Three-Gate Framework Agent for Model Selection
 
-**by Ram Joshi** · AI Product Manager, Munich
-
 ---
 
 ## 1. Why This Exists
@@ -119,22 +117,3 @@ These are the things I learned that I didn't expect going in. Not principles —
 
 ---
 
-## Stack
-
-- Vanilla HTML / CSS / JavaScript — no framework, no build step
-- IBM Plex Sans / Serif / Mono — type system
-- Anthropic Claude Sonnet 4 via direct browser API call
-- `localStorage` for API key persistence
-- Deployable to any static host (GitHub Pages, Netlify, Vercel)
-
-## Usage
-
-1. Clone the repo
-2. Open `index.html` in a browser
-3. Enter your Anthropic API key when prompted (stored locally, never transmitted elsewhere)
-4. Describe what you're building
-5. Adjust parameters on the dashboard to explore how the recommendation changes
-
-## License
-
-MIT
