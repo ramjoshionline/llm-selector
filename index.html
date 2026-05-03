@@ -207,6 +207,28 @@ header{background:var(--navy);display:flex;align-items:center;padding:0 20px;gap
 /* Animate in */
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .animate-in{animation:fadeUp .35s ease forwards;}
+
+  /* ── Live data badge ── */
+  .live-badge {
+    display:inline-flex; align-items:center; gap:5px;
+    font-family:var(--mono); font-size:9.5px; font-weight:500;
+    padding:3px 8px; border-radius:2px; text-transform:uppercase; letter-spacing:.06em;
+  }
+  .live-badge.fresh { background:var(--green-bg); color:var(--green); border:1px solid var(--green-b); }
+  .live-badge.stale { background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-b); }
+  .live-badge.fetching { background:var(--blue-light); color:var(--blue); border:1px solid var(--blue-mid); }
+  .live-dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
+  .live-dot.pulse { animation:livePulse 1.4s ease-in-out infinite; }
+  @keyframes livePulse { 0%,100%{opacity:.4;transform:scale(.8);} 50%{opacity:1;transform:scale(1);} }
+
+  .fetch-status {
+    background:var(--surface); border:1px solid var(--border);
+    padding:10px 14px; display:flex; align-items:center; gap:10px;
+    font-size:11.5px; color:var(--text-m); margin-bottom:12px;
+    border-radius:var(--r); border-left:3px solid var(--blue);
+  }
+  .fetch-status.error { border-left-color:var(--amber); }
+
 </style>
 </head>
 <body>
@@ -576,26 +598,117 @@ function setExample(el){
   document.getElementById('reqInput').focus();
 }
 
-// ── Claude API ────────────────────────────────────────────────────────────
-async function callClaude(messages, systemPrompt){
-  const key=getKey();
-  if(!key) throw new Error('No API key set');
-  const res=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,system:systemPrompt,messages})
-  });
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||`HTTP ${res.status}`);}
-  const data=await res.json();
-  return data.content.map(b=>b.text||'').join('');
+// ── Live data state (badge only, no separate fetch) ──────────────────────
+let liveDataStatus = 'none'; // 'none'|'searching'|'ready'|'failed'
+let liveSearchedAt = null;
+
+function updateLiveBadge(status, detail) {
+  const badge = document.getElementById('liveBadge');
+  if (!badge) return;
+  if (status === 'searching') {
+    badge.className = 'live-badge fetching';
+    badge.innerHTML = '<span class="live-dot pulse"></span>Searching live data…';
+  } else if (status === 'ready') {
+    const age = liveSearchedAt ? Math.round((Date.now() - liveSearchedAt) / 60000) : 0;
+    badge.className = 'live-badge fresh';
+    badge.innerHTML = `<span class="live-dot"></span>Live data · ${detail || 'artificialanalysis.ai'} · ${age < 1 ? 'just now' : age + 'm ago'}`;
+  } else if (status === 'failed') {
+    badge.className = 'live-badge stale';
+    badge.innerHTML = '<span class="live-dot"></span>Training data (search unavailable)';
+  } else {
+    badge.className = 'live-badge stale';
+    badge.innerHTML = '<span class="live-dot"></span>Training data only';
+  }
+}
+
+// ── Claude API — with agentic tool-use loop ───────────────────────────────
+async function callClaude(messages, systemPrompt, useWebSearch = false) {
+  const key = getKey();
+  if (!key) throw new Error('No API key set');
+
+  const body = {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4000,
+    system: systemPrompt,
+    messages: [...messages]
+  };
+
+  if (useWebSearch) {
+    body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+    body.max_tokens = 5000;
+  }
+
+  const apiCall = async (b) => {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(b)
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error?.message || `HTTP ${res.status}`);
+    }
+    return res.json();
+  };
+
+  let data = await apiCall(body);
+
+  // Agentic tool-use loop: keep going while Claude is using tools
+  let iterations = 0;
+  while (data.stop_reason === 'tool_use' && iterations < 5) {
+    iterations++;
+    // Append assistant turn (with tool_use blocks) to message history
+    body.messages.push({ role: 'assistant', content: data.content });
+
+    // The API returns tool_result blocks already in data.content for web_search.
+    // We need to pass them back as a user turn.
+    const toolResultBlocks = data.content
+      .filter(b => b.type === 'tool_result' || b.type === 'tool_use')
+      .map(b => {
+        if (b.type === 'tool_result') return b; // already a result block
+        // For tool_use blocks, the actual search results come back in the
+        // NEXT response's content — but with web_search the API handles
+        // execution server-side and returns tool_result blocks automatically.
+        // We should NOT be here for web_search since the API executes it.
+        // This handles the rare case of other tools needing manual result passing.
+        return { type: 'tool_result', tool_use_id: b.id, content: 'Tool executed.' };
+      });
+
+    if (toolResultBlocks.length === 0) break;
+    body.messages.push({ role: 'user', content: toolResultBlocks });
+    data = await apiCall(body);
+  }
+
+  // Extract final text — note web_search results also appear in content
+  const textBlocks = data.content.filter(b => b.type === 'text');
+  const hasSearchResults = data.content.some(b => b.type === 'tool_result');
+
+  if (useWebSearch && hasSearchResults) {
+    liveSearchedAt = Date.now();
+    updateLiveBadge('ready', 'artificialanalysis.ai');
+  }
+
+  return textBlocks.map(b => b.text).join('');
 }
 
 // ── System prompts ────────────────────────────────────────────────────────
-const INIT_SYSTEM=`You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
+function buildInitSystem() {
+  return `You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
+
+## YOUR DATA SOURCES
+You have access to web_search. Before generating your recommendation, search for current LLM benchmark data from artificialanalysis.ai. Specifically search for:
+- "artificialanalysis.ai intelligence index top models 2025" to get current rankings
+- Use the live scores you find to populate shortlist and benchmark_note fields
+- If search returns no useful data, fall back to your training knowledge and note it
 
 TASK: Given a user's requirement description, do two things:
-1. Infer the 9 parameters below from the description (use sensible defaults if not mentioned)
-2. Generate a full recommendation report
+1. Search for current benchmark data, then infer the 9 parameters from the description
+2. Generate a full recommendation grounded in live data where available
 
 OUTPUT FORMAT: Return ONLY valid JSON in this exact structure, no other text:
 {
@@ -621,13 +734,13 @@ OUTPUT FORMAT: Return ONLY valid JSON in this exact structure, no other text:
       "runner_up_condition": "When to use instead"
     },
     "gate1": {
-      "benchmark_note": "Task-specific benchmark insight — NOT general reputation",
+      "benchmark_note": "Task-specific benchmark insight citing actual scores if found via search — NOT general reputation",
       "context_fit": "Context window assessment",
       "shortlist": ["Model A", "Model B", "Model C"]
     },
     "gate2": {
       "hosting_path": "Recommended hosting approach given team and stage",
-      "cost_estimate": "Estimated monthly cost at their budget tier",
+      "cost_estimate": "Estimated monthly cost at their budget tier — cite live pricing if found",
       "compliance_note": "Data sovereignty / compliance assessment"
     },
     "gate3": {
@@ -645,12 +758,16 @@ OUTPUT FORMAT: Return ONLY valid JSON in this exact structure, no other text:
     ]
   }
 }`;
+}
 
-const UPDATE_SYSTEM=`You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
+function buildUpdateSystem() {
+  return `You are an expert AI Product Manager specializing in LLM selection using the Three-Gate Framework.
 
-TASK: Given a user's requirement description AND their current parameter settings, generate an updated recommendation report.
+You have web_search available. Use it to verify current pricing or rankings if the parameter changes warrant it (e.g. significant budget or task type changes).
 
-OUTPUT FORMAT: Return ONLY valid JSON with a "report" key containing the report object. No other text.
+TASK: Given a user's requirement description AND their current parameter settings, generate an updated recommendation.
+
+OUTPUT FORMAT: Return ONLY valid JSON with a "report" key. No other text.
 {
   "report": {
     "recommendation": {
@@ -685,7 +802,7 @@ OUTPUT FORMAT: Return ONLY valid JSON with a "report" key containing the report 
     ]
   }
 }`;
-
+}
 
 // ── Strip markdown fences from API responses ──────────────────────────────
 function stripFences(s){
@@ -708,10 +825,11 @@ async function runAnalysis(){
   btn.disabled=true;
   btn.innerHTML='<span class="mini-spinner" style="width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;"></span> Analysing…';
 
-  showLoadingState();
+  showLoadingState('Searching live benchmark data…', 'Querying artificialanalysis.ai via web search');
+  updateLiveBadge('searching');
 
   try {
-    const raw=await callClaude([{role:'user',content:`Requirement: ${req}`}], INIT_SYSTEM);
+    const raw=await callClaude([{role:'user',content:`Requirement: ${req}`}], buildInitSystem(), true);
     const data=JSON.parse(stripFences(raw));
     applyInferredParams(data.inferred_params||{});
     document.getElementById('paramControls').style.display='block';
@@ -741,7 +859,7 @@ async function doRecalc(){
   showUpdatingOverlay(true);
   try {
     const prompt=`Requirement: ${lastRequirement}\n\nCurrent parameters:\n${JSON.stringify(params,null,2)}`;
-    const raw=await callClaude([{role:'user',content:prompt}], UPDATE_SYSTEM);
+    const raw=await callClaude([{role:'user',content:prompt}], buildUpdateSystem(), false);
     const data=JSON.parse(stripFences(raw));
     renderDashboard(data.report);
   } catch(e){
@@ -754,13 +872,18 @@ async function doRecalc(){
 }
 
 // ── Render helpers ────────────────────────────────────────────────────────
-function showLoadingState(){
+function showLoadingState(msg='Fetching live data…', sub='Querying artificialanalysis.ai'){
   document.getElementById('rightPanel').innerHTML=`
-    <div class="loading-state">
+    <div class="loading-state" id="loadingState">
       <div class="loading-spinner"></div>
-      <div class="loading-text">Analysing requirements…</div>
-      <div class="loading-sub">Applying Three-Gate Framework</div>
+      <div class="loading-text" id="loadingMsg">${msg}</div>
+      <div class="loading-sub" id="loadingSub">${sub}</div>
     </div>`;
+}
+function updateLoadingState(msg, sub){
+  const m=document.getElementById('loadingMsg'), s=document.getElementById('loadingSub');
+  if(m) m.textContent=msg;
+  if(s) s.textContent=sub;
 }
 
 function showUpdatingOverlay(show){
@@ -807,7 +930,10 @@ function renderDashboard(r){
     <div>
       <div class="section-eyebrow">Primary Recommendation</div>
       <div class="db-recommendation">
-        <div class="rec-eyebrow">RECOMMENDED MODEL · THREE-GATE ANALYSIS</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <div class="rec-eyebrow" style="margin-bottom:0;">RECOMMENDED MODEL · THREE-GATE ANALYSIS</div>
+          <span id="liveBadge" class="live-badge stale"><span class="live-dot"></span>Training data only</span>
+        </div>
         <div class="rec-model">${r.recommendation?.primary_model||'—'}</div>
         <div class="rec-provider">${r.recommendation?.provider||''}</div>
         <div class="rec-rationale">${r.recommendation?.primary_rationale||''}</div>

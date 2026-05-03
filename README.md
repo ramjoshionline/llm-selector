@@ -1,5 +1,7 @@
 # LLM Selector — A Three-Gate Framework Agent for Model Selection
 
+**by Ram Joshi** · AI Product Manager, Munich
+
 ---
 
 ## 1. Why This Exists
@@ -83,9 +85,7 @@ Gate 1 produces a shortlist. Gate 2 filters it by operational reality. Gate 3 sc
 
 ## 4. What's Next
 
-These are the next meaningful increments — not feature bloat, but gaps that limit the tool's usefulness in a real product decision context.
-
-**Benchmark data layer.** Right now the agent reasons from training knowledge about model benchmarks. The next version should pull live data from [artificialanalysis.ai](https://artificialanalysis.ai) or the HELM leaderboard API so the shortlist is grounded in current scores, not Claude's last training snapshot. Model rankings shift fast.
+These are the next meaningful increments — not feature bloat, but gaps that still limit the tool's usefulness in a real product decision context. Live leaderboard data via web search has shipped; these are what remain.
 
 **Cost calculator.** The infrastructure gate estimates cost in buckets. It should take actual call volume (requests/day, average token count) and output a monthly cost comparison across the shortlisted models using live pricing. The two-screenshot checklist becomes one automated output.
 
@@ -115,5 +115,27 @@ These are the things I learned that I didn't expect going in. Not principles —
 
 **The two-screenshot checklist is the most underrated feature.** It's not technically interesting — it's just two strings in a list. But in user testing, it was consistently cited as immediately actionable. Most PM frameworks produce analysis. This one produces a task: go capture these two artefacts before you make the final call. The handoff from insight to action is where most decision tools break down.
 
+**Embedding live data retrieval in the analysis call is better than a separate fetch.** The first implementation used two sequential API calls: one to fetch benchmark data from artificialanalysis.ai via web_search, then one for the actual analysis. This reliably hit rate limits (HTTP 429) and introduced a second failure mode. The correct architecture is one call with the `web_search` tool attached — Claude searches and analyses in a single agentic turn. The CORS problem (you can't call artificialanalysis.ai directly from a browser) disappears entirely, there's no second API key to manage, and the failure surface halves. The rule generalises: when you're tempted to chain two LLM calls, ask whether the second call can be a tool in the first.
+
 ---
 
+## Stack
+
+- Vanilla HTML / CSS / JavaScript — no framework, no build step
+- IBM Plex Sans / Serif / Mono — type system
+- Anthropic Claude Sonnet 4 (`claude-sonnet-4-20250514`) via direct browser API call
+- `web_search_20250305` tool for live leaderboard data from artificialanalysis.ai
+- `localStorage` for API key persistence
+- Deployable to any static host (GitHub Pages, Netlify, Vercel)
+
+## Usage
+
+1. Clone the repo
+2. Open `index.html` in a browser
+3. Enter your Anthropic API key when prompted (stored locally, never transmitted elsewhere)
+4. Describe what you're building
+5. Adjust parameters on the dashboard to explore how the recommendation changes
+
+## License
+
+MIT
