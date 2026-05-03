@@ -1,123 +1,221 @@
-# LLM Selector — A Three-Gate Framework Agent for Model Selection
+# I Built an Agent to Solve the Model Selection Problem Nobody Talks About
 
-**by Ram Joshi** · AI Product Manager, Munich
-
----
-
-## 1. Why This Exists
-
-Every team I've talked to in the last 12 months has made the same mistake: they picked an LLM the same way they'd pick a SaaS tool. They went to a leaderboard, sorted by the top score, and shipped it. Six months later they're either locked into a model that doesn't fit their task type, running a $40k/month API bill they didn't plan for, or trying to migrate off a fine-tuned model with no abstraction layer in place.
-
-The problem isn't that teams pick the wrong model. The problem is that **nobody defined what "right" meant before the choice was made.** Model selection is treated as a single decision when it's actually three separate decisions — capability, infrastructure, and trajectory — each requiring different inputs and carrying different long-term consequences. Collapsing them into one call ("which model should we use?") is where the errors compound.
-
-This agent exists because that decision deserves a framework, not a vibe. And because a framework embedded in a tool that re-evaluates in real time is more useful than a framework in a doc nobody reads.
+*Every team picks the wrong LLM. Here's why — and a framework for fixing it.*
 
 ---
 
-## 2. What It Does
+Nobody chose the wrong LLM on purpose. They just never defined what "right" meant.
 
-LLM Selector is a single-page browser agent that takes one input — a plain-language description of what you're building — and returns a structured model recommendation with full reasoning across three decision gates.
+And here is how the possible scenario looks like:
 
-**Input:** One sentence to one paragraph describing your use case, team, and constraints.
+A team is six months into AI product development. Their AI feature is working — kind of.
 
-**Output:** A live dashboard showing:
-- Primary model recommendation with rationale
-- Runner-up model and when to switch to it
-- Three-gate analysis (Capability / Infrastructure / Trajectory)
-- Replaceability score (0–8) and migration risk rating
-- Red flags detected in your requirement profile
-- Documentation checklist — the two screenshots every PM should have before sign-off
-- Decision log you can paste directly into a requirements doc
+The model they picked is too slow for the latency requirements.
 
-**Key behaviour:** After the initial recommendation, every parameter on the dashboard is adjustable — task type, context window, team size, budget, data sovereignty, cloud provider, lock-in tolerance, time horizon. Change any of them and the recommendation recalculates automatically. This turns a one-time output into an interactive decision tool.
+Or the cost is 4× what they projected.
 
-**Live benchmark data:** When you submit a requirement, the agent doesn't reason from static training knowledge alone. As part of the analysis call, it uses Anthropic's `web_search` tool to query [artificialanalysis.ai](https://artificialanalysis.ai) for current model rankings — intelligence index scores, coding and math benchmarks, pricing per million tokens, and output speed. This search happens once per session, at the moment you click Analyse, before the recommendation is generated. The results are injected directly into the system prompt so Claude's shortlist and benchmark notes are grounded in scores from the actual leaderboard at that point in time, not from whenever the model was last trained. A live data badge on the dashboard shows whether the search succeeded and how fresh the data is. If the search fails for any reason, the agent falls back to training knowledge and flags it clearly — the recommendation still runs, it's just not live-grounded.
-
-The agent runs entirely in the browser. Your Anthropic API key is stored in `localStorage` and never leaves your device except in direct calls to Anthropic's API.
+Or they tried to swap to a better model and discovered their eval stack was so tightly coupled to the original model's output format that migration would delay everything.
 
 ---
 
-## 3. The Framework
+## The actual problem
 
-The Three-Gate Framework treats model selection as three sequential decisions, each with a distinct set of inputs and a clear failure mode.
+Model selection gets treated as a single question: *which model should we use?* It isn't. It's three separate questions that require different information, different stakeholders, and different timeframes.
+
+**Can this model do what we need?** That's a capability question. It requires task-specific benchmark data, not overall leaderboard rank.
+
+**Can our team actually operate this model?** That's an infrastructure question. A 2-engineer pre-PMF startup and a 20-engineer enterprise with data sovereignty requirements are making completely different bets — on cost structure, compliance, and who owns the problem when it breaks.
+
+**What does this model look like in 12 months?** That's a trajectory question. AI shifts every 3–6 months. The model you choose today should be one you can migrate away from without rebuilding your entire eval stack.
+
+Most teams answer the first question, handle the second ad hoc, and never ask the third. That's where the expensive mistakes come from.
+
+I built an agent that helps select the right LLM for your product using the Three-Gate Framework, and this post is a walkthrough of how it works.
+
+---
+
+## What the tool actually does
+
+You type one sentence describing what you are building. Something like: *"Two engineers, pre-revenue legal tech startup, building a contract extraction pipeline from uploaded PDFs."*
+
+The agent infers eleven parameters from that description, runs them through the three gates, searches [artificialanalysis.ai](https://artificialanalysis.ai) for current benchmark scores and pricing, and produces a recommendation with full reasoning — primary model, runner-up, gate-by-gate analysis, a replaceability score, red flags, and a documentation checklist.
+
+Every inferred parameter is then exposed as an adjustable control on the dashboard. You can change the task type, the budget, the team size, the time horizon — and the recommendation recalculates live.
+
+One input. Live benchmark data. Interactive output.
+
+---
+
+## The Three-Gate Framework
+
+Every model has to pass all three gates to reach the recommendation.
+
+Failing Gate 1 means the model can't do the job.
+Failing Gate 2 means the team can't operate it.
+Failing Gate 3 means the team is betting on something they may not be able to exit when the landscape shifts — which it will.
+
+---
 
 ### Gate 1 — Capability
 
-**The question:** Can this model actually do what we need?
+**The question: Can this model actually do what we need?**
 
-The most common mistake here is sorting a general leaderboard and picking the top result. A contract extraction task is a retrieval and structured output problem. The model ranked #1 overall may rank #6 on retrieval. That's the model you were about to ship.
+The most common mistake here is opening artificialanalysis.ai or a similar leaderboard, sorting by the overall score, and picking the top result. That composite score is a weighted average across dozens of benchmarks spanning reasoning, science, coding, and agentic tasks. For most specific use cases, the majority of those benchmarks are irrelevant.
 
-The agent evaluates capability by task type — not general intelligence. Supported task types include retrieval, extraction, Q&A, reasoning, code, summarization, tool use, multimodal, agentic workflow, multi-agent orchestration, function calling, browser/computer use, RAG pipelines, and agent memory and state.
+The model ranked #1 on the overall intelligence index may rank #6 on the metrics that actually matter for contract extraction.
 
-Context window is evaluated separately from benchmark rank. A model with a strong retrieval score but an 8k context window is the wrong call for a pipeline that processes 50-page legal documents.
+A contract extraction workflow is a retrieval and structured output problem. The relevant benchmarks are AA-LCR (long-context reasoning across documents from 10k to 100k tokens) and IFBench (whether the model reliably conforms to a specified output format).
+
+Gate 1 has three parameters.
+
+**Task Type** is the most consequential input in the framework because it determines which benchmarks the agent uses. Fourteen task types are supported, each mapped to specific scores from artificialanalysis.ai:
+
+*Retrieval* uses AA-LCR and AA-Omniscience — the latter combining factual accuracy and hallucination rate into a single score, because surfacing information that isn't in the source corpus is the most common retrieval failure mode.
+
+*Extraction* uses AA-LCR and IFBench — instruction and format compliance matters most when the extraction output must conform to a downstream schema.
+
+*Reasoning and Q&A* use GPQA Diamond (198 graduate-level questions designed to be unsolvable by search), HLE (Humanity's Last Exam — 2,158 expert-level questions across mathematics and science, currently the hardest publicly available benchmark), and MMLU-Pro (12,000 graduate questions across 14 subject areas).
+
+*Code* uses LiveCodeBench — a contamination-free benchmark that continuously harvests fresh problems from LeetCode, AtCoder, and Codeforces so models cannot have memorised the answers during training — alongside SciCode (288 scientist-curated subproblems from laboratory challenges) and the AA Coding Index.
+
+*Agentic Workflow and Multi-Agent Orchestration* use GDPval-AA (220 real-world tasks across 44 occupations where models are given shell access and web browsing to complete end-to-end work, scored by ELO from blind pairwise comparisons), τ²-Bench Telecom (114 dual-control agent-user simulation tasks in a technical support context), Terminal-Bench Hard (44 terminal-based agentic tasks covering software engineering and system administration), and APEX-Agents-AA (452 professional-service tasks in realistic application environments).
+
+*RAG Pipelines* use AA-LCR, AA-Omniscience, and GPQA Diamond — the synthesis reasoning step in RAG is where model quality matters most, and AA-Omniscience's hallucination rate catches the most common failure: generating plausible content not present in the retrieved context.
+
+*Function Calling, Browser Use, Agent Memory and State* each map to task-specific benchmark subsets in the same way.
+
+The point is not the specific benchmarks. The point is that the relevant benchmarks are different for every task type, and using the general intelligence index as a proxy for task-specific capability is the root cause of most bad model selection decisions.
+
+**Context Window** is evaluated as a hard filter before any benchmarks are consulted. There are four tiers: under 8k tokens (short documents and single-turn tasks), 8k–32k (standard document processing, multi-turn conversations), 32k–128k (full contracts, extended codebases), and 128k+ (full repository ingestion, book-length documents, long-horizon agent sessions). If the model physically cannot fit your inputs, its benchmark scores are irrelevant.
+
+**Accuracy Priority** determines how benchmark performance is weighted against cost and latency when Gate 2 data comes in. At Low, speed and cost dominate and smaller models like Haiku and Gemini Flash are viable. At Critical — medical, legal, financial, safety contexts — the agent recommends the highest task-benchmark scorer regardless of what it costs. The four levels map directly to the severity of the consequences when the model is wrong.
+
+Gate 1 output is a shortlist of 2–3 models that clear the capability threshold, filtered by context window, ranked by the task-specific benchmarks that actually matter.
+
+---
 
 ### Gate 2 — Infrastructure
 
-**The question:** Where do we host it, and what does that bet mean for our team?
+**The question: Where does this run, and what does that decision actually cost?**
 
-A 2-engineer startup running GPT-4 through the OpenAI API and a 20-engineer enterprise running the same model through Azure are making fundamentally different bets — on reliability, security, cost structure, and who owns the problem when it breaks.
+Two teams can be running the same model and making completely different bets.
 
-The agent evaluates team size, company stage, monthly budget, data sovereignty requirements, and cloud provider preference together. The output isn't just a hosting recommendation — it's a cost estimate at your volume and a compliance assessment.
+A 2-engineer startup calling GPT-4o through the OpenAI API is betting on simplicity and speed.
+A 20-engineer enterprise running GPT-4o through Azure OpenAI is betting on compliance, data residency, and SLA guarantees.
 
-Key rule enforced by the agent: if you are pre-PMF with fewer than three engineers, it will always recommend a closed-source API. The infrastructure overhead of self-hosting open-source at that stage will slow you down more than the cost savings are worth.
+Gate 2 is where those differences become decisive — and where technically excellent models get eliminated because the team cannot support the operational requirements, or because the hosting path fails compliance before the cost question is even asked.
+
+**Team Size** is the most directional parameter in this gate. The framework enforces a hard rule:
+
+If the team has 1–2 engineers, the recommendation will always be a closed-source API. No exceptions. At that team size, the infrastructure work of self-hosting — provisioning, model updates, monitoring, incident response — consumes the team disproportionately. The cost savings from open-source do not compensate for the velocity loss.
+
+At 3–10 engineers, closed-source remains the default unless there's demonstrated cost pressure and dedicated infrastructure capacity.
+
+Open-source self-hosting becomes viable at 11–50 with the right team structure.
+
+At 50+, the full range of options including fine-tuned open-source models is in scope.
+
+**Company Stage** shapes how aggressively to optimise for speed versus cost versus compliance.
+
+Pre-PMF means avoiding infrastructure complexity that slows deployment cycles — closed-source pay-as-you-go, no fine-tuning, no bespoke deployment pipelines.
+
+Post-PMF Scaling is where monthly API costs are now predictable enough to model and open-source evaluation starts to pay back.
+
+Enterprise is where compliance and data residency requirements often dominate the entire decision before the technical evaluation begins.
+
+**Monthly Budget** is cross-referenced against live pricing data from artificialanalysis.ai across five tiers.
+
+Under $500/month covers lightweight models at limited volume — Haiku, Gemini Flash.
+$500–$1k covers mid-tier at moderate volume — GPT-4o Mini, Sonnet 3.5.
+$1k–$5k covers frontier models at production volume — GPT-4o, Sonnet 3.7, Gemini 1.5 Pro.
+$5k–$20k covers high-volume or reasoning-heavy workloads.
+$20k+ is enterprise contract territory. The agent flags any shortlisted model where realistic usage would breach the stated budget.
+
+**Data Sovereignty**, when required, is a hard filter that runs before cost is even considered. It eliminates any hosting path where data leaves the team's own cloud environment — which means direct API calls to OpenAI, Anthropic, Google, and others are removed from the shortlist entirely. The only viable paths are AWS Bedrock, Azure OpenAI Service, or GCP Vertex AI. This is relevant for any product handling personal data under GDPR, health data under HIPAA, financial data under SOC 2 or PCI-DSS, or government data under FedRAMP.
+
+**Cloud Provider** determines the specific managed deployment path.
+
+AWS maps to Bedrock — managed access to Claude, Llama, Mistral, and others within your VPC, integrating natively with IAM and CloudTrail.
+
+Azure maps to Azure OpenAI Service — GPT-4o and other OpenAI models with enterprise SLAs, European data residency options, and Active Directory integration, which is typically the path of least resistance for Microsoft-stack enterprises.
+
+GCP maps to Vertex AI — the Gemini family plus Claude and Llama via Model Garden.
+
+None means direct API calls: lowest overhead, pay-as-you-go, appropriate for pre-PMF teams not yet committed to a cloud.
+
+Gate 2 output is a hosting path, a monthly cost estimate using live pricing, and a compliance assessment — applied to the Gate 1 shortlist. Models that cannot be hosted compliantly are eliminated before cost is considered.
+
+---
 
 ### Gate 3 — Trajectory
 
-**The question:** What does this model look like in 12 months, and can we migrate if we need to?
+**The question: What does this model look like in 12 months, and what does it cost to leave?**
 
-This is the gate that almost never gets discussed in PM-engineering conversations. AI shifts every 3–6 months. The model you choose today should be one you can migrate away from without rebuilding your entire eval stack.
+This is the gate that almost never gets asked. It's also the one responsible for the most expensive problems. AI shifts every 3–6 months. A model that is the right technical choice today may be deprecated, superseded, or repriced within a year.
 
-The agent produces a Replaceability Index scored 0–8 based on:
+Gate 3 scores each remaining model on how easily the team could migrate away from it if they needed to. The score isn't about whether you will need to switch — it's about what it would cost if you did.
+
+**Lock-in Tolerance** is a strategic question about how acceptable vendor dependency is.
+
+At Low, the framework eliminates models with non-portable fine-tuning and penalises anything without compatibility with LiteLLM or Portkey — abstraction layers that let you swap models with a config change rather than a code change. Open-weight models like Llama and Mistral, which can be hosted anywhere independently of the original provider, score well at this tolerance level.
+
+At High, proprietary fine-tuning and provider-specific features are in scope, and the replaceability score is de-weighted in the final recommendation.
+
+**Time Horizon** determines how heavily trajectory risk is weighted against current benchmark performance.
+
+At 3 months, benchmark scores dominate — the landscape won't shift enough to make today's right answer wrong within a quarter.
+
+At 12 months, trajectory risk is significant and a model with an unclear roadmap scores lower than a slightly weaker model with a stable development path.
+
+At 24 months, trajectory is the dominant factor once the capability threshold is cleared. A model scoring 7/8 on the replaceability index is routinely preferred over a slightly stronger model scoring 3/8 at this horizon.
+
+**Migration Capacity** adjusts how heavily the replaceability index is weighted based on the team's realistic ability to execute a switch.
+
+At None — no bandwidth for a migration — whatever is chosen is effectively permanent, so the framework weights replaceability heavily.
+
+At Strong — where a model-agnostic abstraction layer already sits between the application and the API — any model can be exited in days, and the replaceability score is de-weighted accordingly.
+
+These three parameters produce the **Replaceability Index**, scored 0–8:
 
 | Factor | Score |
 |---|---|
-| Open weights available | +2 |
-| API abstraction layer compatible (LiteLLM, Portkey) | +2 |
-| Active model family, not deprecated | +2 |
-| Provider financial stability | +1 |
-| Community / OSS momentum | +1 |
+| Open weights available (model can be hosted anywhere, independent of the provider) | +2 |
+| API abstraction layer compatible — LiteLLM or Portkey support means switching is a config change | +2 |
+| Active model family, not deprecated — provider has committed to ongoing development | +2 |
+| Provider financial stability — lowers probability of a forced migration | +1 |
+| Community and OSS momentum — fine-tunes, adapters, and tooling exist independently of the provider | +1 |
 
-Migration risk (LOW / MEDIUM / HIGH) is derived from the replaceability score combined with the team's stated migration capacity and time horizon.
+7–8 is LOW migration risk. 4–6 is MEDIUM. 0–3 is HIGH and the recommendation is flagged with a warning. The final rating adjusts one level upward if Migration Capacity is Strong and one level downward if it is None.
 
-### Why the gates are sequential
-
-Gate 1 produces a shortlist. Gate 2 filters it by operational reality. Gate 3 scores the survivors on long-term risk. A model that passes Gate 1 brilliantly but fails Gate 2 (wrong hosting model for your compliance requirements) never reaches the recommendation. This prevents the common failure of picking a technically excellent model that creates an operational or commercial problem six months later.
+Gate 3 output is a Replaceability Index score, a migration risk rating, and a 12-month trajectory assessment for each model that cleared Gates 1 and 2.
 
 ---
 
-## 4. What's Next
+### Why the sequence matters
 
-These are the next meaningful increments — not feature bloat, but gaps that still limit the tool's usefulness in a real product decision context. Live leaderboard data via web search has shipped; these are what remain.
+Gate 1 shortlists on capability.
+Gate 2 filters by operational and financial reality.
+Gate 3 scores on exit cost.
 
-**Cost calculator.** The infrastructure gate estimates cost in buckets. It should take actual call volume (requests/day, average token count) and output a monthly cost comparison across the shortlisted models using live pricing. The two-screenshot checklist becomes one automated output.
+A model that tops Gate 1 but fails Gate 2 — the strongest reasoning model on GPQA Diamond, but requiring self-hosting that a 2-person pre-PMF team can't absorb — never reaches the recommendation.
 
-**Eval stack recommendation.** After the model is selected, the next decision is how to evaluate it. The agent should output a starter eval design — task-specific metrics, a test set structure, and a suggested framework (Ragas, LMQL, custom) — as a second tab on the dashboard.
+A model that clears both Gates 1 and 2 but scores 2/8 on the Replaceability Index gets flagged as HIGH migration risk. That might be fine at a 3-month horizon. It is genuinely problematic at 24.
 
-**Team profile memory.** Right now every session starts fresh. A saved team profile (size, stage, cloud provider, sovereignty requirements) would let returning users skip re-entering the infrastructure context and focus on the task-type specific question.
-
-**Model migration planner.** For teams that already have a model in production, an input for "current model" should trigger a migration cost assessment — estimating prompt engineering delta, fine-tuning portability, and eval rebuild effort.
-
-**Export to requirements doc.** The decision log and three-gate analysis should export as a formatted Word or Notion doc that drops directly into a PRD. The agent already produces all the content; the export is just packaging.
+The sequence prevents the pattern that shows up most often in postmortems: a team picked a technically excellent model that created an operational, financial, or strategic problem six months later.
 
 ---
 
-## 5. Insights from Building This Agent POC
+## What's next for the tool
 
-These are the things I learned that I didn't expect going in. Not principles — concrete findings that would have changed how I scoped this if I'd known them upfront.
+The agent is a POC. These are the gaps that still matter.
 
-**Structured JSON output is fragile in ways you don't anticipate.** Even with explicit instructions to return only raw JSON, the model frequently wraps responses in markdown code fences. You need a fence-stripping pre-processor on every parse call. The fix is one function, but if you don't know to expect it, you'll spend an hour debugging a `SyntaxError` on a response that looks correct in the console.
+**A real cost calculator.** Right now budget is estimated in tiers. The next version should take actual call volume — requests per day, average input and output token counts — and produce a monthly cost comparison across the shortlisted models using live pricing. The documentation checklist currently says "take a screenshot of the cost comparison." It should just be the cost comparison.
 
-**One input is a better UX than ten, but it shifts complexity into the prompt.** Moving from a 10-question intake to a single free-text description made the product dramatically easier to use. But all the inference work that the intake questions were doing has to move into the system prompt and output schema. The prompt engineering surface area roughly doubled when the UX surface area halved. This is the right trade — users shouldn't pay for model complexity — but the PM has to carry that cost somewhere.
+**An eval stack recommendation.** Model selection and eval design are the same decision. Once you know which model you're running and what task type it's handling, the agent should output a starter eval design — the specific metrics, test set structure, and evaluation framework (Ragas, LMQL, or custom) that fits the recommendation. Right now that work still happens separately and usually too late.
 
-**Parameter controls change how users think, not just what they select.** When users can adjust parameters after seeing the initial recommendation, they don't just tune the output — they build a mental model of the decision space. Watching the recommendation change when you toggle "data sovereignty required" teaches you something about the infrastructure gate that reading about it doesn't. Interactivity is a learning mechanism, not just a personalisation feature.
+**Team profile memory.** Every session starts from scratch. A saved team profile — size, stage, cloud provider, sovereignty requirements — would let returning users focus immediately on the task-type specific question rather than re-entering infrastructure context they've already answered.
 
-**Debounce is a product decision, not just a performance optimisation.** Setting the recalculation delay to 1.2 seconds after a parameter change wasn't arbitrary. Too short (< 500ms) and every slider drag fires multiple API calls and the UI feels unstable. Too long (> 2s) and the connection between the parameter change and the recommendation update feels broken. The delay is part of the perceived responsiveness of the product.
-
-**The replaceability index made abstract risk concrete.** Before building the 0–8 score, trajectory risk was a narrative paragraph that most users skimmed. Once it became a number with a visible bar, users engaged with it — asking why it was 5 and not 7, comparing it across models. Quantifying something fuzzy doesn't make it precise; it makes it discussable. That's the goal for a decision-support tool.
-
-**The two-screenshot checklist is the most underrated feature.** It's not technically interesting — it's just two strings in a list. But in user testing, it was consistently cited as immediately actionable. Most PM frameworks produce analysis. This one produces a task: go capture these two artefacts before you make the final call. The handoff from insight to action is where most decision tools break down.
-
-**Embedding live data retrieval in the analysis call is better than a separate fetch.** The first implementation used two sequential API calls: one to fetch benchmark data from artificialanalysis.ai via web_search, then one for the actual analysis. This reliably hit rate limits (HTTP 429) and introduced a second failure mode. The correct architecture is one call with the `web_search` tool attached — Claude searches and analyses in a single agentic turn. The CORS problem (you can't call artificialanalysis.ai directly from a browser) disappears entirely, there's no second API key to manage, and the failure surface halves. The rule generalises: when you're tempted to chain two LLM calls, ask whether the second call can be a tool in the first.
+**A migration planner for teams already in production.** If you have a model running today and want to know what it would cost to move, the agent should take your current model as an input and produce an assessment: prompt engineering delta, fine-tuning portability, and eval rebuild effort. That's a different use case from initial selection, and it has a large addressable audience.
 
 ---
 
